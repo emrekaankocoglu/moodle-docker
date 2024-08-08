@@ -1,27 +1,29 @@
-version: '3'
 services:
   db:
-    image: mysql
+    image: mariadb
     volumes:
-      - db_data:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: moodle
-      MYSQL_USER: moodle
-      MYSQL_PASSWORD: password
-    restart: always
+      - ./db_data:/var/lib/mysql
+    environment: 
+        MYSQL_RANDOM_ROOT_PASSWORD: 1
+        MYSQL_DATABASE: moodle
+        MYSQL_USER: moodle
+        MYSQL_PASSWORD: password
+    healthcheck:
+      test: mariadb-admin ping -h 127.0.0.1 -u $$MYSQL_USER --password=$$MYSQL_PASSWORD
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 55
   moodle:
     image: aesr/moodle
     ports:
       - "8080:80"
-    links:
-      - db:database
     volumes:
       - ./moodledata:/var/www/moodledata
       - ./moodle:/var/www/html
     restart: always
     environment:
-      MOODLE_DB_HOST: database
+      MOODLE_DB_HOST: db
       MOODLE_DB_PORT: 3306
       MOODLE_DB_NAME: moodle
       MOODLE_DB_USER: moodle
@@ -31,14 +33,18 @@ services:
     labels:
       cron.moodle.command: "/usr/local/bin/php /var/www/html/admin/cli/cron.php"
       cron.moodle.interval: "every minute"
+    depends_on:
+      db:
+        condition: service_healthy
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     ports:
       - "8081:80"
-    links:
-      - db:database
     environment:
-      PMA_HOST: database
+      PMA_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
   tasks:
     image: funkyfuture/deck-chores:1
     restart: unless-stopped
@@ -47,6 +53,9 @@ services:
       LABEL_NAMESPACE: cron
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
 volumes:
     db_data:
       driver: local
